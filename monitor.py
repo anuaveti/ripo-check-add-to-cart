@@ -22,7 +22,7 @@ RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
 if not all([ZOHO_EMAIL, ZOHO_PASSWORD, RECIPIENT_EMAIL]):
     raise ValueError("Missing required environment variables")
 
-SMTP_SERVER = "smtp.zoho.eu"
+SMTP_SERVERS = ["smtp.zoho.com", "smtp.zoho.eu"]
 SMTP_PORT = 587
 
 # ================= EMAIL HELPER =================
@@ -34,18 +34,22 @@ def send_email_notification(subject, body):
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
 
-    try:
-        context = ssl.create_default_context()
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls(context=context)
-        server.login(ZOHO_EMAIL, ZOHO_PASSWORD)
-        server.send_message(msg)
-        server.quit()
-        print("Email sent successfully")
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-        import traceback
-        traceback.print_exc()
+    for server in SMTP_SERVERS:
+        try:
+            context = ssl.create_default_context()
+            server_obj = smtplib.SMTP(server, SMTP_PORT)
+            server_obj.starttls(context=context)
+            server_obj.login(ZOHO_EMAIL, ZOHO_PASSWORD)
+            server_obj.send_message(msg)
+            server_obj.quit()
+            print(f"Email sent successfully using {server}")
+            return True
+        except Exception as e:
+            print(f"Failed with {server}: {e}")
+            continue
+
+    print("All SMTP servers failed.")
+    return False
 
 # ================= TEST RUNNER =================
 def run_test_suite():
@@ -160,7 +164,7 @@ class RipoAddToCart(unittest.TestCase):
 
         time.sleep(2)
 
-        # Print full page source for debugging
+        # Print page source for debugging
         print("=" * 80)
         print("PAGE SOURCE (first 50000 chars):")
         print(driver.page_source[:50000])
