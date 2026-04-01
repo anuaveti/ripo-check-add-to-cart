@@ -2,8 +2,8 @@ name: Hourly Cart Test
 
 on:
   schedule:
-    - cron: '0 * * * *'   # every hour
-  workflow_dispatch:      # manual trigger
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   test:
@@ -26,6 +26,16 @@ jobs:
         uses: nanasess/setup-chromedriver@v2
       - name: Install Python dependencies
         run: pip install selenium
+      - name: Test email credentials
+        run: |
+          python -c "
+          import smtplib, ssl
+          server = smtplib.SMTP('smtp.zoho.com', 587)
+          server.starttls(context=ssl.create_default_context())
+          server.login('${{ secrets.ZOHO_EMAIL }}', '${{ secrets.ZOHO_PASSWORD }}')
+          server.quit()
+          print('SMTP login successful')
+          "
       - name: Run monitor
         run: python monitor.py
         env:
