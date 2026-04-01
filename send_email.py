@@ -10,34 +10,33 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
 def send_test_results():
-    """Send the Selenium test results via email"""
-    
-    # Get credentials from environment variables (set by GitHub Secrets)
+    # Get credentials from environment variables
     sendgrid_api_key = os.environ.get('SENDGRID_API_KEY')
     from_email = os.environ.get('FROM_EMAIL', 'anush.avetisyan@wdmarket.lv')
     to_email = os.environ.get('TO_EMAIL', 'anush.avetisyan@wdmarket.lv')
-    
+
     if not sendgrid_api_key:
         print("Error: SENDGRID_API_KEY not set")
         sys.exit(1)
-    
-    # Read the test output log once
+
+    # Read the test output log
     log_file = 'output.log'
     output_content = ""
     if os.path.exists(log_file):
         with open(log_file, 'r') as f:
             output_content = f.read()
-        # Determine status from last non-empty line (simple heuristic)
+        # Determine status from last non-empty line
         lines = [line.strip() for line in output_content.splitlines() if line.strip()]
         last_line = lines[-1] if lines else ""
         status = "✅ SUCCESS" if "OK" in last_line or "passed" in last_line.lower() else "❌ FAILED"
     else:
         output_content = "No output.log file found"
         status = "⚠️ UNKNOWN"
-    
-    # Create email content
+
+    # Email subject
     subject = f"Hourly Selenium Test Results - {status}"
-    
+
+    # HTML body
     html_content = f"""
     <html>
     <head>
@@ -46,7 +45,7 @@ def send_test_results():
             .status {{ font-size: 18px; font-weight: bold; margin: 10px 0; }}
             .success {{ color: green; }}
             .failed {{ color: red; }}
-            .log {{ background: #f4f4f4; padding: 15px; border-radius: 5px; 
+            .log {{ background: #f4f4f4; padding: 15px; border-radius: 5px;
                     font-family: monospace; white-space: pre-wrap; margin-top: 20px; }}
         </style>
     </head>
@@ -65,15 +64,14 @@ def send_test_results():
     </body>
     </html>
     """
-    
-    # Create and send the message
+
     message = Mail(
         from_email=from_email,
         to_emails=to_email,
         subject=subject,
         html_content=html_content
     )
-    
+
     try:
         sg = SendGridAPIClient(sendgrid_api_key)
         response = sg.send(message)
