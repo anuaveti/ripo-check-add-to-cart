@@ -29,13 +29,23 @@ jobs:
       - name: Test email credentials
         run: |
           python -c "
-          import smtplib, ssl
-          server = smtplib.SMTP('smtp.zoho.eu', 587)
-          server.starttls(context=ssl.create_default_context())
-          server.login('${{ secrets.ZOHO_EMAIL }}', '${{ secrets.ZOHO_PASSWORD }}')
-          server.quit()
-          print('SMTP login successful')
+          import os, smtplib, ssl
+          email = os.environ['ZOHO_EMAIL']
+          password = os.environ['ZOHO_PASSWORD']
+          for server in ['smtp.zoho.com', 'smtp.zoho.eu']:
+              try:
+                  server_obj = smtplib.SMTP(server, 587)
+                  server_obj.starttls(context=ssl.create_default_context())
+                  server_obj.login(email, password)
+                  server_obj.quit()
+                  print(f'Success with {server}')
+                  break
+              except Exception as e:
+                  print(f'Failed with {server}: {e}')
           "
+        env:
+          ZOHO_EMAIL: ${{ secrets.ZOHO_EMAIL }}
+          ZOHO_PASSWORD: ${{ secrets.ZOHO_PASSWORD }}
       - name: Run monitor
         run: python monitor.py
         env:
