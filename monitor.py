@@ -14,7 +14,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, NoAlertPresentException, TimeoutException
 from selenium.webdriver.chrome.options import Options
 
-# ================= CONFIGURATION (from environment variables) =================
+# ================= CONFIGURATION =================
 ZOHO_EMAIL = os.environ.get("ZOHO_EMAIL")
 ZOHO_PASSWORD = os.environ.get("ZOHO_PASSWORD")
 RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
@@ -27,7 +27,7 @@ SMTP_PORT = 587
 
 # ================= EMAIL HELPER =================
 def send_email_notification(subject, body):
-    """Send an email via Zoho SMTP."""
+    print(f"Attempting to send email to {RECIPIENT_EMAIL}...")
     msg = MIMEMultipart()
     msg['From'] = ZOHO_EMAIL
     msg['To'] = RECIPIENT_EMAIL
@@ -44,10 +44,11 @@ def send_email_notification(subject, body):
         print("Email sent successfully")
     except Exception as e:
         print(f"Failed to send email: {e}")
+        import traceback
+        traceback.print_exc()
 
 # ================= TEST RUNNER =================
 def run_test_suite():
-    """Run the test case and return (success, output)."""
     suite = unittest.TestLoader().loadTestsFromTestCase(RipoAddToCart)
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
@@ -57,7 +58,7 @@ def run_test_suite():
         error_messages.append(f"{err[0]}: {err[1]}")
     return success, "\n".join(error_messages)
 
-# ================= YOUR TEST CLASS (with headless Chrome) =================
+# ================= TEST CLASS =================
 class RipoAddToCart(unittest.TestCase):
     def setUp(self):
         chrome_options = Options()
@@ -66,6 +67,10 @@ class RipoAddToCart(unittest.TestCase):
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
+        # Anti‑detection
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
         self.driver = webdriver.Chrome(options=chrome_options)
         self.driver.implicitly_wait(30)
         self.base_url = "https://www.blazedemo.com/"
@@ -106,12 +111,50 @@ class RipoAddToCart(unittest.TestCase):
 
     def test_ripo_add_to_cart(self):
         driver = self.driver
-        wait = WebDriverWait(driver, 30)
+        wait = WebDriverWait(driver, 60)  # extended timeout
 
-        # Homepage and popups
+        # Homepage
         driver.get("https://insectnets.com/")
-        self._click_element(driver, wait.until(EC.element_to_be_clickable((By.ID, "geoip-popup-switch-yes"))))
-        self._click_element(driver, wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-cky-tag=\"reject-button\"]"))))
+        print("Page loaded:", driver.current_url)
+        time.sleep(3)
+
+        # Attempt to close geoip popup with fallback selectors
+        geoip_clicked = False
+        for by, selector in [
+            (By.ID, "geoip-popup-switch-yes"),
+            (By.CSS_SELECTOR, ".geoip-popup-switch-yes"),
+            (By.XPATH, "//button[contains(text(), 'Yes')]"),
+            (By.XPATH, "//button[contains(text(), 'Switch')]")
+        ]:
+            try:
+                elem = wait.until(EC.element_to_be_clickable((by, selector)))
+                self._click_element(driver, elem)
+                geoip_clicked = True
+                print("Geoip popup clicked")
+                break
+            except TimeoutException:
+                continue
+        if not geoip_clicked:
+            print("Geoip popup not found – continuing")
+
+        # Attempt to close cookie consent popup
+        cookie_clicked = False
+        for by, selector in [
+            (By.CSS_SELECTOR, "[data-cky-tag=\"reject-button\"]"),
+            (By.CSS_SELECTOR, ".cky-reject-button"),
+            (By.XPATH, "//button[contains(text(), 'Reject')]"),
+            (By.XPATH, "//button[contains(text(), 'Decline')]")
+        ]:
+            try:
+                elem = wait.until(EC.element_to_be_clickable((by, selector)))
+                self._click_element(driver, elem)
+                cookie_clicked = True
+                print("Cookie popup clicked")
+                break
+            except TimeoutException:
+                continue
+        if not cookie_clicked:
+            print("Cookie popup not found – continuing")
 
         # Category: INSEKTU SIETI LOGIEM
         self._click_element(driver, wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "INSEKTU SIETI LOGIEM"))))
@@ -244,7 +287,6 @@ class RipoAddToCart(unittest.TestCase):
         self.assertEqual([], self.verificationErrors)
 
 if __name__ == "__main__":
-    # Run once (the workflow will schedule this hourly)
     success, errors = run_test_suite()
     if success:
         subject = f"[OK] Insectnets cart test PASSED at {datetime.now()}"
