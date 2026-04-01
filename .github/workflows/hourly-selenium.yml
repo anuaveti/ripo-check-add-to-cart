@@ -19,6 +19,8 @@ jobs:
       - name: Install dependencies (Taurus, SendGrid, etc.)
         run: |
           pip install bzt sendgrid
+          # Fix urwid issue
+          pip install --upgrade urwid
           sudo apt-get update
           sudo apt-get install -y wget unzip
 
