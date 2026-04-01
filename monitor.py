@@ -164,10 +164,15 @@ class RipoAddToCart(unittest.TestCase):
 
         time.sleep(2)
 
-        # Print page source for debugging
+        # Debug: print all links on the page
         print("=" * 80)
-        print("PAGE SOURCE (first 50000 chars):")
-        print(driver.page_source[:50000])
+        print("ALL LINKS ON PAGE:")
+        all_links = driver.find_elements(By.TAG_NAME, "a")
+        for link in all_links:
+            text = link.text.strip()
+            href = link.get_attribute("href")
+            if text or href:
+                print(f"  {text} -> {href}")
         print("=" * 80)
 
         # Wait for navigation menu
@@ -194,7 +199,7 @@ class RipoAddToCart(unittest.TestCase):
         self._click_element(driver, category_link)
         print("Category link clicked")
 
-        # The rest of the test (unchanged) ...
+        # The rest of the test (unchanged from your working version)
         time.sleep(2)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
 
