@@ -22,7 +22,7 @@ RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
 if not all([ZOHO_EMAIL, ZOHO_PASSWORD, RECIPIENT_EMAIL]):
     raise ValueError("Missing required environment variables")
 
-SMTP_SERVER = "smtp.zoho.com"
+SMTP_SERVER = "smtp.zoho.eu"
 SMTP_PORT = 587
 
 # ================= EMAIL HELPER =================
