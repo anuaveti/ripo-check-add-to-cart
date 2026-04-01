@@ -30,7 +30,7 @@ jobs:
         run: |
           python -c "
           import smtplib, ssl
-          server = smtplib.SMTP('smtp.zoho.com', 587)
+          server = smtplib.SMTP('smtp.zoho.eu', 587)
           server.starttls(context=ssl.create_default_context())
           server.login('${{ secrets.ZOHO_EMAIL }}', '${{ secrets.ZOHO_PASSWORD }}')
           server.quit()
