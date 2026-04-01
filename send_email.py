@@ -6,10 +6,13 @@ Reads the output log and sends test results
 
 import os
 import sys
+from datetime import datetime
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
 def send_test_results():
+    """Send the Selenium test results via email"""
+
     # Get credentials from environment variables
     sendgrid_api_key = os.environ.get('SENDGRID_API_KEY')
     from_email = os.environ.get('FROM_EMAIL', 'anush.avetisyan@wdmarket.lv')
@@ -33,7 +36,6 @@ def send_test_results():
         output_content = "No output.log file found"
         status = "⚠️ UNKNOWN"
 
-    # Email subject
     subject = f"Hourly Selenium Test Results - {status}"
 
     # HTML body
@@ -51,7 +53,7 @@ def send_test_results():
     </head>
     <body>
         <h2>Hourly Selenium Test Results</h2>
-        <p><strong>Time:</strong> {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <p><strong>Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         <p><strong>Status:</strong> 
             <span class="status {'success' if 'SUCCESS' in status else 'failed'}">{status}</span>
         </p>
