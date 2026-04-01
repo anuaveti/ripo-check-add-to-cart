@@ -4,7 +4,6 @@ import smtplib
 import ssl
 import unittest
 import time
-import sys
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -68,7 +67,6 @@ class RipoAddToCart(unittest.TestCase):
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
-        # Anti-detection
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
@@ -115,7 +113,7 @@ class RipoAddToCart(unittest.TestCase):
 
     def test_ripo_add_to_cart(self):
         driver = self.driver
-        wait = WebDriverWait(driver, 90)  # increased timeout
+        wait = WebDriverWait(driver, 90)
 
         # Homepage
         driver.get("https://insectnets.com/")
@@ -160,54 +158,67 @@ class RipoAddToCart(unittest.TestCase):
         if not cookie_clicked:
             print("Cookie popup not found – continuing")
 
-        # Wait a moment for any overlay to disappear
         time.sleep(2)
 
-        # DEBUG: print page source
-        print("Page source after popups (first 2000 chars):")
-        print(driver.page_source[:2000])
+        # Print full page source for debugging
+        print("=" * 80)
+        print("PAGE SOURCE (first 50000 chars):")
+        print(driver.page_source[:50000])
+        print("=" * 80)
 
-        # Category: INSEKTU SIETI LOGIEM – try multiple ways
-        try:
-            link = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "INSEKTU SIETI LOGIEM")))
-        except TimeoutException:
-            print("Exact link text not found, trying partial text...")
-            link = wait.until(EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "SIETI LOGIEM")))
-        self._click_element(driver, link)
+        # Wait for navigation menu
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".main-navigation, .site-header, nav")))
+
+        # Find category link
+        category_link = None
+        for by, selector in [
+            (By.LINK_TEXT, "INSEKTU SIETI LOGIEM"),
+            (By.PARTIAL_LINK_TEXT, "SIETI LOGIEM"),
+            (By.XPATH, "//a[contains(text(), 'INSEKTU')]"),
+            (By.XPATH, "//a[contains(text(), 'SIETI')]")
+        ]:
+            try:
+                category_link = wait.until(EC.element_to_be_clickable((by, selector)))
+                print(f"Found category link using {by}: {selector}")
+                break
+            except TimeoutException:
+                continue
+
+        if category_link is None:
+            raise Exception("Could not find category link")
+
+        self._click_element(driver, category_link)
         print("Category link clicked")
 
+        # The rest of the test (unchanged) ...
         time.sleep(2)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
 
-        # The rest of the test (same as your working version)
-        # Click second product (index 1)
+        # ---- Second product ----
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
         self.assertGreater(len(products), 1, "Not enough products in category")
         driver.execute_script("arguments[0].scrollIntoView();", products[1])
         self._click_element(driver, products[1])
-
-        # Product page actions
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", wait_for_option=False)
         self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
         self._close_overlay(driver, wait)
 
-        # Back to category and click first product (index 0)
+        # ---- First product ----
         self._click_element(driver, driver.find_element(By.LINK_TEXT, "INSEKTU SIETI LOGIEM"))
         time.sleep(2)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
         driver.execute_script("arguments[0].scrollIntoView();", products[0])
         self._click_element(driver, products[0])
-
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", wait_for_option=False)
         self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
         self._close_overlay(driver, wait)
 
-        # Back to category and click third product (index 2)
+        # ---- Third product ----
         self._click_element(driver, driver.find_element(By.LINK_TEXT, "INSEKTU SIETI LOGIEM"))
         time.sleep(2)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
@@ -215,7 +226,6 @@ class RipoAddToCart(unittest.TestCase):
         self.assertGreater(len(products), 2, "Not enough products for third click")
         driver.execute_script("arguments[0].scrollIntoView();", products[2])
         self._click_element(driver, products[2])
-
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_mounting-type-window-header > span.attr-accordion__title", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-dimensions-header > span.attr-accordion__title", wait_for_option=False)
@@ -225,7 +235,7 @@ class RipoAddToCart(unittest.TestCase):
         self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
         self._close_overlay(driver, wait)
 
-        # DOORS SECTION
+        # ---- Doors category ----
         self._click_element(driver, driver.find_element(By.LINK_TEXT, "INSEKTU SIETI DURVĪM"))
         time.sleep(2)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
@@ -237,9 +247,7 @@ class RipoAddToCart(unittest.TestCase):
         door_product = show_products[0] if show_products else products[0]
         driver.execute_script("arguments[0].scrollIntoView();", door_product)
         self._click_element(driver, door_product)
-
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
-
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_obstractions-header > span.attr-accordion__title", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_mounting-type-door-header", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-dimensions-header > span.attr-accordion__title", wait_for_option=False)
@@ -248,7 +256,6 @@ class RipoAddToCart(unittest.TestCase):
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_petscreen-in-lower-part-header > span.attr-accordion__title", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", wait_for_option=False)
-
         self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
         self._close_overlay(driver, wait)
 
@@ -262,17 +269,13 @@ class RipoAddToCart(unittest.TestCase):
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", fifth_product)
         time.sleep(1)
         self._click_element(driver, fifth_product)
-
         wait_long = WebDriverWait(driver, 40)
         wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
-
         self._select_first_option_in_accordion(driver, wait_long, "#attr-acc-pa_installation-type-header > span.attr-accordion__title", timeout=0.5)
         self._select_first_option_in_accordion(driver, wait_long, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", timeout=0.5)
-
         add_to_cart_button = wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt")))
         driver.execute_script("arguments[0].scrollIntoView();", add_to_cart_button)
         self._click_element(driver, add_to_cart_button)
-
         self._click_element(driver, wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.button.wc-forward.btn.btn-color-secondary.btn-size-large"))))
 
     def is_element_present(self, how, what):
@@ -313,5 +316,5 @@ if __name__ == "__main__":
         send_email_notification(subject, body)
     else:
         subject = f"[ERROR] Insectnets cart test FAILED at {datetime.now()}"
-        body = f"The automated cart test failed.\n\nError details:\n{errors}"
+        body = f"Error details:\n{errors}"
         send_email_notification(subject, body)
