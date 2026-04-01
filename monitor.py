@@ -4,6 +4,7 @@ import smtplib
 import ssl
 import unittest
 import time
+import sys
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -20,7 +21,7 @@ ZOHO_PASSWORD = os.environ.get("ZOHO_PASSWORD")
 RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
 
 if not all([ZOHO_EMAIL, ZOHO_PASSWORD, RECIPIENT_EMAIL]):
-    raise ValueError("Missing required environment variables: ZOHO_EMAIL, ZOHO_PASSWORD, RECIPIENT_EMAIL")
+    raise ValueError("Missing required environment variables")
 
 SMTP_SERVER = "smtp.zoho.com"
 SMTP_PORT = 587
@@ -67,10 +68,13 @@ class RipoAddToCart(unittest.TestCase):
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
-        # Anti‑detection
+        # Anti-detection
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
+        chrome_options.add_argument(
+            "user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
         self.driver = webdriver.Chrome(options=chrome_options)
         self.driver.implicitly_wait(30)
         self.base_url = "https://www.blazedemo.com/"
@@ -111,14 +115,14 @@ class RipoAddToCart(unittest.TestCase):
 
     def test_ripo_add_to_cart(self):
         driver = self.driver
-        wait = WebDriverWait(driver, 60)  # extended timeout
+        wait = WebDriverWait(driver, 90)  # increased timeout
 
         # Homepage
         driver.get("https://insectnets.com/")
         print("Page loaded:", driver.current_url)
         time.sleep(3)
 
-        # Attempt to close geoip popup with fallback selectors
+        # Geoip popup
         geoip_clicked = False
         for by, selector in [
             (By.ID, "geoip-popup-switch-yes"),
@@ -137,7 +141,7 @@ class RipoAddToCart(unittest.TestCase):
         if not geoip_clicked:
             print("Geoip popup not found – continuing")
 
-        # Attempt to close cookie consent popup
+        # Cookie consent popup
         cookie_clicked = False
         for by, selector in [
             (By.CSS_SELECTOR, "[data-cky-tag=\"reject-button\"]"),
@@ -156,11 +160,26 @@ class RipoAddToCart(unittest.TestCase):
         if not cookie_clicked:
             print("Cookie popup not found – continuing")
 
-        # Category: INSEKTU SIETI LOGIEM
-        self._click_element(driver, wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "INSEKTU SIETI LOGIEM"))))
+        # Wait a moment for any overlay to disappear
+        time.sleep(2)
+
+        # DEBUG: print page source
+        print("Page source after popups (first 2000 chars):")
+        print(driver.page_source[:2000])
+
+        # Category: INSEKTU SIETI LOGIEM – try multiple ways
+        try:
+            link = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "INSEKTU SIETI LOGIEM")))
+        except TimeoutException:
+            print("Exact link text not found, trying partial text...")
+            link = wait.until(EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "SIETI LOGIEM")))
+        self._click_element(driver, link)
+        print("Category link clicked")
+
         time.sleep(2)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
 
+        # The rest of the test (same as your working version)
         # Click second product (index 1)
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
         self.assertGreater(len(products), 1, "Not enough products in category")
