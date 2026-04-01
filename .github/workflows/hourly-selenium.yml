@@ -1,0 +1,50 @@
+name: Hourly Selenium Test (Taurus)
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # every hour at minute 0
+  workflow_dispatch:       # allows manual trigger
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Taurus and Chrome
+        run: |
+          pip install bzt
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-chromedriver
+
+      - name: Run Taurus test
+        id: taurus
+        run: |
+          # Run the test; we override headless to true (CI needs headless)
+          bzt RIPO-add-to-cart-Selenium.yaml -o modules.selenium.headless=true > output.log 2>&1 || echo "exit_code=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true   # ensure email is sent even on failure
+
+      - name: Send email via Zoho
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.zoho.com
+          server_port: 465
+          username: ${{ secrets.ZOHO_EMAIL }}
+          password: ${{ secrets.ZOHO_PASSWORD }}
+          subject: "Hourly Selenium Test Results"
+          to: anush.avetisyan@wdmarket.lv
+          from: ${{ secrets.ZOHO_EMAIL }}
+          body: |
+            Test completed at $(date)
+            Status: ${{ steps.taurus.outcome }}
+            Output:
+            $(cat output.log)
+          # Optionally attach the full log
+          # attachments: output.log
