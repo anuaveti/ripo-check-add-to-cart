@@ -1,4 +1,4 @@
-name: Hourly Selenium Test (Taurus)
+name: Hourly Selenium Test (SendGrid)
 
 on:
   schedule:
@@ -18,33 +18,22 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Taurus and Chrome
+      - name: Install dependencies
         run: |
           pip install bzt
+          pip install sendgrid
           sudo apt-get update
           sudo apt-get install -y chromium-browser chromium-chromedriver
 
       - name: Run Taurus test
         id: taurus
         run: |
-          # Run the test; we override headless to true (CI needs headless)
-          bzt RIPO-add-to-cart-Selenium.yaml -o modules.selenium.headless=true > output.log 2>&1 || echo "exit_code=$?" >> $GITHUB_OUTPUT
-        continue-on-error: true   # ensure email is sent even on failure
+          bzt RIPO-add-to-cart-Selenium.yaml -o modules.selenium.headless=true > output.log 2>&1
+        continue-on-error: true
 
-      - name: Send email via Zoho
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.zoho.com
-          server_port: 465
-          username: ${{ secrets.ZOHO_EMAIL }}
-          password: ${{ secrets.ZOHO_PASSWORD }}
-          subject: "Hourly Selenium Test Results"
-          to: anush.avetisyan@wdmarket.lv
-          from: ${{ secrets.ZOHO_EMAIL }}
-          body: |
-            Test completed at $(date)
-            Status: ${{ steps.taurus.outcome }}
-            Output:
-            $(cat output.log)
-          # Optionally attach the full log
-          # attachments: output.log
+      - name: Send email notification
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          TO_EMAIL: ${{ secrets.TO_EMAIL }}
+        run: python send_email.py
