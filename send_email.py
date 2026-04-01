@@ -21,20 +21,18 @@ def send_test_results():
         print("Error: SENDGRID_API_KEY not set")
         sys.exit(1)
     
-    # Read the test output log
+    # Read the test output log once
     log_file = 'output.log'
+    output_content = ""
     if os.path.exists(log_file):
         with open(log_file, 'r') as f:
             output_content = f.read()
-    else:
-        output_content = "No output.log file found"
-    
-    # Determine test status from last run
-    if os.path.exists(log_file):
-        with open(log_file, 'r') as f:
-            last_line = f.readlines()[-1] if f.readlines() else ""
+        # Determine status from last non-empty line (simple heuristic)
+        lines = [line.strip() for line in output_content.splitlines() if line.strip()]
+        last_line = lines[-1] if lines else ""
         status = "✅ SUCCESS" if "OK" in last_line or "passed" in last_line.lower() else "❌ FAILED"
     else:
+        output_content = "No output.log file found"
         status = "⚠️ UNKNOWN"
     
     # Create email content
