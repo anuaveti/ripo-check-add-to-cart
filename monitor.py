@@ -27,7 +27,7 @@ if not all([ZOHO_EMAIL, ZOHO_PASSWORD, RECIPIENT_EMAIL]):
 SMTP_SERVERS = ["smtp.zoho.com", "smtp.zoho.eu"]
 SMTP_PORT = 587
 
-# ================= EMAIL HELPER (with image attachment) =================
+# ================= EMAIL HELPER =================
 def send_email_notification(subject, body, image_path=None):
     print(f"Attempting to send email to {RECIPIENT_EMAIL}...")
     msg = MIMEMultipart()
@@ -63,11 +63,7 @@ def send_email_notification(subject, body, image_path=None):
     return False
 
 # ================= TEST RUNNER =================
-# Global variable to store screenshot path from test
-_screenshot_path = None
-
 def run_test_suite():
-    global _screenshot_path
     suite = unittest.TestLoader().loadTestsFromTestCase(RipoAddToCart)
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
@@ -75,10 +71,7 @@ def run_test_suite():
     error_messages = []
     for err in result.errors + result.failures:
         error_messages.append(f"{err[0]}: {err[1]}")
-    # After the test runs, the screenshot path is set in the test class attribute.
-    # We need to capture it from the test instance. Since we don't have direct access,
-    # we can use a class variable or a global. The test class sets the global.
-    return success, "\n".join(error_messages), _screenshot_path
+    return success, "\n".join(error_messages)
 
 # ================= TEST CLASS =================
 class RipoAddToCart(unittest.TestCase):
@@ -108,6 +101,66 @@ class RipoAddToCart(unittest.TestCase):
             raise
         except:
             driver.execute_script("arguments[0].click();", element)
+
+    def _close_any_popup(self, driver, wait):
+        """Aggressively try to close any popup/overlay using common selectors."""
+        # List of possible close button selectors
+        close_selectors = [
+            (By.CSS_SELECTOR, ".popup-close, .close-popup, .modal-close, .close"),
+            (By.CSS_SELECTOR, "button[aria-label='Close']"),
+            (By.CSS_SELECTOR, "button.close"),
+            (By.XPATH, "//button[contains(text(), 'Close')]"),
+            (By.XPATH, "//button[contains(text(), '×')]"),
+            (By.XPATH, "//span[contains(text(), '×')]"),
+            (By.CSS_SELECTOR, ".newsletter-popup .close"),
+            (By.CSS_SELECTOR, ".popup .close"),
+            (By.CSS_SELECTOR, "div[role='dialog'] button"),
+        ]
+        # Also try to click any "No thanks", "Decline", "Dismiss" buttons
+        dismiss_selectors = [
+            (By.XPATH, "//button[contains(text(), 'No thanks')]"),
+            (By.XPATH, "//button[contains(text(), 'Dismiss')]"),
+            (By.XPATH, "//button[contains(text(), 'Decline')]"),
+            (By.XPATH, "//button[contains(text(), 'Not now')]"),
+            (By.XPATH, "//button[contains(text(), 'Maybe later')]"),
+        ]
+
+        # Try close buttons first
+        for by, selector in close_selectors:
+            try:
+                elem = driver.find_element(by, selector)
+                if elem.is_displayed() and elem.is_enabled():
+                    self._click_element(driver, elem)
+                    print(f"Closed popup using: {selector}")
+                    time.sleep(0.5)
+                    return True
+            except:
+                continue
+
+        # Then try dismiss buttons
+        for by, selector in dismiss_selectors:
+            try:
+                elem = driver.find_element(by, selector)
+                if elem.is_displayed() and elem.is_enabled():
+                    self._click_element(driver, elem)
+                    print(f"Closed popup using: {selector}")
+                    time.sleep(0.5)
+                    return True
+            except:
+                continue
+
+        # Fallback: try to click overlay background if it has a close action
+        try:
+            overlay = driver.find_element(By.CSS_SELECTOR, ".modal-backdrop, .popup-overlay, .overlay")
+            if overlay.is_displayed():
+                self._click_element(driver, overlay)
+                print("Closed popup by clicking overlay")
+                time.sleep(0.5)
+                return True
+        except:
+            pass
+
+        return False
 
     def _get_windows_menu_link(self, driver, wait):
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".main-navigation, .site-header, nav, .menu-primary-container")))
@@ -187,14 +240,17 @@ class RipoAddToCart(unittest.TestCase):
             pass
 
     def test_ripo_add_to_cart(self):
-        global _screenshot_path
         driver = self.driver
         wait = WebDriverWait(driver, 90)
 
-        # Homepage and popups
+        # Homepage
         driver.get("https://insectnets.com/")
         print("Page loaded:", driver.current_url)
         time.sleep(3)
+
+        # Close any popup that appears
+        self._close_any_popup(driver, wait)
+        time.sleep(1)
 
         # Geoip popup
         geoip_clicked = False
@@ -257,6 +313,7 @@ class RipoAddToCart(unittest.TestCase):
         # ---- First product ----
         driver.get("https://insectnets.com/")
         time.sleep(2)
+        self._close_any_popup(driver, wait)  # close any popup again
         windows_link = self._get_windows_menu_link(driver, wait)
         self._click_element(driver, windows_link)
         time.sleep(2)
@@ -273,6 +330,7 @@ class RipoAddToCart(unittest.TestCase):
         # ---- Third product ----
         driver.get("https://insectnets.com/")
         time.sleep(2)
+        self._close_any_popup(driver, wait)
         windows_link = self._get_windows_menu_link(driver, wait)
         self._click_element(driver, windows_link)
         time.sleep(2)
@@ -293,6 +351,7 @@ class RipoAddToCart(unittest.TestCase):
         # ---- Doors category ----
         driver.get("https://insectnets.com/")
         time.sleep(2)
+        self._close_any_popup(driver, wait)
         doors_link = self._get_doors_menu_link(driver, wait)
         print(f"Clicking doors menu link: '{doors_link.text}'")
         self._click_element(driver, doors_link)
@@ -321,6 +380,7 @@ class RipoAddToCart(unittest.TestCase):
         # Fifth door product
         driver.get("https://insectnets.com/")
         time.sleep(2)
+        self._close_any_popup(driver, wait)
         doors_link = self._get_doors_menu_link(driver, wait)
         self._click_element(driver, doors_link)
         time.sleep(2)
@@ -349,8 +409,7 @@ class RipoAddToCart(unittest.TestCase):
         screenshot_file.close()
         self.driver.save_screenshot(screenshot_path)
         print(f"Screenshot saved to {screenshot_path}")
-        # Store in global variable for later email
-        _screenshot_path = screenshot_path
+        self.screenshot_path = screenshot_path
 
     def is_element_present(self, how, what):
         try:
@@ -383,7 +442,10 @@ class RipoAddToCart(unittest.TestCase):
         self.assertEqual([], self.verificationErrors)
 
 if __name__ == "__main__":
-    success, errors, screenshot_path = run_test_suite()
+    test_instance = RipoAddToCart()
+    success, errors = run_test_suite()
+    screenshot_path = getattr(test_instance, 'screenshot_path', None)
+
     if success:
         subject = f"[OK] Insectnets cart test PASSED at {datetime.now()}"
         body = "The automated cart test completed successfully. All products were added to the cart. Screenshot attached."
@@ -393,7 +455,6 @@ if __name__ == "__main__":
         body = f"Error details:\n{errors}"
         send_email_notification(subject, body)
 
-    # Clean up screenshot if it exists
     if screenshot_path and os.path.exists(screenshot_path):
         try:
             os.unlink(screenshot_path)
