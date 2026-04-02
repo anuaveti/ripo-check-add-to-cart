@@ -103,7 +103,8 @@ class RipoAddToCart(unittest.TestCase):
             driver.execute_script("arguments[0].click();", element)
 
     def _close_any_popup(self, driver, wait):
-        """Aggressively try to close any popup/overlay using common selectors."""
+        """Try to close any popup by finding and clicking the X button, then fallback to other selectors."""
+        # Priority: look for any element with 'close' in class or id, or an X button
         close_selectors = [
             (By.CSS_SELECTOR, ".popup-close, .close-popup, .modal-close, .close"),
             (By.CSS_SELECTOR, "button[aria-label='Close']"),
@@ -297,13 +298,7 @@ class RipoAddToCart(unittest.TestCase):
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
         self.assertGreater(len(products), 1, "Not enough products in category")
         driver.execute_script("arguments[0].scrollIntoView();", products[1])
-        old_url = driver.current_url
         self._click_element(driver, products[1])
-        try:
-            wait.until(lambda d: d.current_url != old_url)
-            print(f"Navigated to: {driver.current_url}")
-        except TimeoutException:
-            print("URL did not change after product click")
         self._close_any_popup(driver, wait)
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
 
@@ -312,7 +307,7 @@ class RipoAddToCart(unittest.TestCase):
         self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
         self._close_overlay(driver, wait)
 
-        # ---------- RETURN TO HOMEPAGE, THEN CATEGORY (first product) ----------
+        # ---------- FIRST PRODUCT ----------
         driver.get("https://insectnets.com/")
         time.sleep(2)
         self._close_any_popup(driver, wait)
@@ -323,12 +318,7 @@ class RipoAddToCart(unittest.TestCase):
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
         driver.execute_script("arguments[0].scrollIntoView();", products[0])
-        old_url = driver.current_url
         self._click_element(driver, products[0])
-        try:
-            wait.until(lambda d: d.current_url != old_url)
-        except TimeoutException:
-            print("URL did not change for first product")
         self._close_any_popup(driver, wait)
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
 
@@ -349,12 +339,7 @@ class RipoAddToCart(unittest.TestCase):
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
         self.assertGreater(len(products), 2, "Not enough products for third click")
         driver.execute_script("arguments[0].scrollIntoView();", products[2])
-        old_url = driver.current_url
         self._click_element(driver, products[2])
-        try:
-            wait.until(lambda d: d.current_url != old_url)
-        except TimeoutException:
-            print("URL did not change for third product")
         self._close_any_popup(driver, wait)
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
 
@@ -383,12 +368,7 @@ class RipoAddToCart(unittest.TestCase):
         show_products = driver.find_elements(By.CSS_SELECTOR, ".product-grid-item.show .product-grid-item__image-hover picture img")
         door_product = show_products[0] if show_products else products[0]
         driver.execute_script("arguments[0].scrollIntoView();", door_product)
-        old_url = driver.current_url
         self._click_element(driver, door_product)
-        try:
-            wait.until(lambda d: d.current_url != old_url)
-        except TimeoutException:
-            print("URL did not change for first door product")
         self._close_any_popup(driver, wait)
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
 
@@ -417,12 +397,7 @@ class RipoAddToCart(unittest.TestCase):
         fifth_product = products[4]
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", fifth_product)
         time.sleep(1)
-        old_url = driver.current_url
         self._click_element(driver, fifth_product)
-        try:
-            wait.until(lambda d: d.current_url != old_url)
-        except TimeoutException:
-            print("URL did not change for fifth door product")
         self._close_any_popup(driver, wait)
         wait_long = WebDriverWait(driver, 40)
         wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
