@@ -104,7 +104,6 @@ class RipoAddToCart(unittest.TestCase):
 
     def _close_any_popup(self, driver, wait):
         """Aggressively try to close any popup/overlay using common selectors."""
-        # List of possible close button selectors
         close_selectors = [
             (By.CSS_SELECTOR, ".popup-close, .close-popup, .modal-close, .close"),
             (By.CSS_SELECTOR, "button[aria-label='Close']"),
@@ -116,7 +115,6 @@ class RipoAddToCart(unittest.TestCase):
             (By.CSS_SELECTOR, ".popup .close"),
             (By.CSS_SELECTOR, "div[role='dialog'] button"),
         ]
-        # Also try to click any "No thanks", "Decline", "Dismiss" buttons
         dismiss_selectors = [
             (By.XPATH, "//button[contains(text(), 'No thanks')]"),
             (By.XPATH, "//button[contains(text(), 'Dismiss')]"),
@@ -125,7 +123,6 @@ class RipoAddToCart(unittest.TestCase):
             (By.XPATH, "//button[contains(text(), 'Maybe later')]"),
         ]
 
-        # Try close buttons first
         for by, selector in close_selectors:
             try:
                 elem = driver.find_element(by, selector)
@@ -137,7 +134,6 @@ class RipoAddToCart(unittest.TestCase):
             except:
                 continue
 
-        # Then try dismiss buttons
         for by, selector in dismiss_selectors:
             try:
                 elem = driver.find_element(by, selector)
@@ -149,7 +145,6 @@ class RipoAddToCart(unittest.TestCase):
             except:
                 continue
 
-        # Fallback: try to click overlay background if it has a close action
         try:
             overlay = driver.find_element(By.CSS_SELECTOR, ".modal-backdrop, .popup-overlay, .overlay")
             if overlay.is_displayed():
@@ -243,12 +238,10 @@ class RipoAddToCart(unittest.TestCase):
         driver = self.driver
         wait = WebDriverWait(driver, 90)
 
-        # Homepage
+        # ---------- HOMEPAGE ----------
         driver.get("https://insectnets.com/")
         print("Page loaded:", driver.current_url)
         time.sleep(3)
-
-        # Close any popup that appears
         self._close_any_popup(driver, wait)
         time.sleep(1)
 
@@ -292,54 +285,79 @@ class RipoAddToCart(unittest.TestCase):
 
         time.sleep(2)
 
-        # ---- Windows category (second product) ----
+        # ---------- CATEGORY PAGE (windows) ----------
         windows_link = self._get_windows_menu_link(driver, wait)
         print(f"Clicking windows menu link: '{windows_link.text}'")
         self._click_element(driver, windows_link)
         time.sleep(2)
+        self._close_any_popup(driver, wait)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
 
-        # Click second product (index 1)
+        # ---------- PRODUCT PAGE (second product) ----------
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
         self.assertGreater(len(products), 1, "Not enough products in category")
         driver.execute_script("arguments[0].scrollIntoView();", products[1])
+        old_url = driver.current_url
         self._click_element(driver, products[1])
+        try:
+            wait.until(lambda d: d.current_url != old_url)
+            print(f"Navigated to: {driver.current_url}")
+        except TimeoutException:
+            print("URL did not change after product click")
+        self._close_any_popup(driver, wait)
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
+
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", wait_for_option=False)
         self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
         self._close_overlay(driver, wait)
 
-        # ---- First product ----
-        driver.get("https://insectnets.com/")
-        time.sleep(2)
-        self._close_any_popup(driver, wait)  # close any popup again
-        windows_link = self._get_windows_menu_link(driver, wait)
-        self._click_element(driver, windows_link)
-        time.sleep(2)
-        wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
-        products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
-        driver.execute_script("arguments[0].scrollIntoView();", products[0])
-        self._click_element(driver, products[0])
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", wait_for_option=False)
-        self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
-        self._close_overlay(driver, wait)
-
-        # ---- Third product ----
+        # ---------- RETURN TO HOMEPAGE, THEN CATEGORY (first product) ----------
         driver.get("https://insectnets.com/")
         time.sleep(2)
         self._close_any_popup(driver, wait)
         windows_link = self._get_windows_menu_link(driver, wait)
         self._click_element(driver, windows_link)
         time.sleep(2)
+        self._close_any_popup(driver, wait)
+        wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
+        products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
+        driver.execute_script("arguments[0].scrollIntoView();", products[0])
+        old_url = driver.current_url
+        self._click_element(driver, products[0])
+        try:
+            wait.until(lambda d: d.current_url != old_url)
+        except TimeoutException:
+            print("URL did not change for first product")
+        self._close_any_popup(driver, wait)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
+
+        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
+        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", wait_for_option=False)
+        self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
+        self._close_overlay(driver, wait)
+
+        # ---------- THIRD PRODUCT ----------
+        driver.get("https://insectnets.com/")
+        time.sleep(2)
+        self._close_any_popup(driver, wait)
+        windows_link = self._get_windows_menu_link(driver, wait)
+        self._click_element(driver, windows_link)
+        time.sleep(2)
+        self._close_any_popup(driver, wait)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
         self.assertGreater(len(products), 2, "Not enough products for third click")
         driver.execute_script("arguments[0].scrollIntoView();", products[2])
+        old_url = driver.current_url
         self._click_element(driver, products[2])
+        try:
+            wait.until(lambda d: d.current_url != old_url)
+        except TimeoutException:
+            print("URL did not change for third product")
+        self._close_any_popup(driver, wait)
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
+
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_mounting-type-window-header > span.attr-accordion__title", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-dimensions-header > span.attr-accordion__title", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_dimension-type-header", wait_for_option=False)
@@ -348,7 +366,7 @@ class RipoAddToCart(unittest.TestCase):
         self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
         self._close_overlay(driver, wait)
 
-        # ---- Doors category ----
+        # ---------- DOORS CATEGORY ----------
         driver.get("https://insectnets.com/")
         time.sleep(2)
         self._close_any_popup(driver, wait)
@@ -356,6 +374,7 @@ class RipoAddToCart(unittest.TestCase):
         print(f"Clicking doors menu link: '{doors_link.text}'")
         self._click_element(driver, doors_link)
         time.sleep(2)
+        self._close_any_popup(driver, wait)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
 
         # First door product
@@ -364,8 +383,15 @@ class RipoAddToCart(unittest.TestCase):
         show_products = driver.find_elements(By.CSS_SELECTOR, ".product-grid-item.show .product-grid-item__image-hover picture img")
         door_product = show_products[0] if show_products else products[0]
         driver.execute_script("arguments[0].scrollIntoView();", door_product)
+        old_url = driver.current_url
         self._click_element(driver, door_product)
+        try:
+            wait.until(lambda d: d.current_url != old_url)
+        except TimeoutException:
+            print("URL did not change for first door product")
+        self._close_any_popup(driver, wait)
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
+
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_obstractions-header > span.attr-accordion__title", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_mounting-type-door-header", wait_for_option=False)
         self._select_first_option_in_accordion(driver, wait, "#attr-acc-dimensions-header > span.attr-accordion__title", wait_for_option=False)
@@ -384,25 +410,34 @@ class RipoAddToCart(unittest.TestCase):
         doors_link = self._get_doors_menu_link(driver, wait)
         self._click_element(driver, doors_link)
         time.sleep(2)
+        self._close_any_popup(driver, wait)
         wait.until(lambda d: len(d.find_elements(By.CSS_SELECTOR, ".product-grid-item, .product")) > 4)
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
         self.assertGreater(len(products), 4, "Not enough door products")
         fifth_product = products[4]
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", fifth_product)
         time.sleep(1)
+        old_url = driver.current_url
         self._click_element(driver, fifth_product)
+        try:
+            wait.until(lambda d: d.current_url != old_url)
+        except TimeoutException:
+            print("URL did not change for fifth door product")
+        self._close_any_popup(driver, wait)
         wait_long = WebDriverWait(driver, 40)
         wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
+
         self._select_first_option_in_accordion(driver, wait_long, "#attr-acc-pa_installation-type-header > span.attr-accordion__title", timeout=0.5)
         self._select_first_option_in_accordion(driver, wait_long, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", timeout=0.5)
         add_to_cart_button = wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt")))
         driver.execute_script("arguments[0].scrollIntoView();", add_to_cart_button)
         self._click_element(driver, add_to_cart_button)
 
-        # ---- Go to cart page and take screenshot ----
+        # ---------- CART PAGE ----------
         cart_link = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.button.wc-forward.btn.btn-color-secondary.btn-size-large")))
         self._click_element(driver, cart_link)
         time.sleep(3)
+        self._close_any_popup(driver, wait)
         print("Cart page loaded, taking screenshot...")
         screenshot_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         screenshot_path = screenshot_file.name
