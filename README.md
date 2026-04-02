@@ -68,10 +68,11 @@ The script automatically tries both `smtp.zoho.com` and `smtp.zoho.eu`; add your
 
 ## 5. Push the files
 
-'bash'
+```bash
 git add monitor.py .github/workflows/hourly.yml
 git commit -m "Add cart monitoring with email notifications"
 git push origin main
+```
 
 ## How It Works
 
@@ -107,17 +108,19 @@ All secrets are passed as environment variables.
 
 Edit the `cron` expression in `.github/workflows/hourly.yml`:
 
-    yaml
-    schedule:
-      - cron: '0 */2 * * *'   # every 2 hours
+```yaml
+schedule:
+- cron: '0 */2 * * *'   # every 2 hours
+```
 
 ## Use a different email provider
 
 Replace the `send_email_notification` function in `monitor.py` with your own SMTP settings (e.g., Gmail, Outlook, SendGrid). Example for Gmail:
 
-    python
-    SMTP_SERVER = "smtp.gmail.com"
-    SMTP_PORT = 587
+```python
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+```
 
 You will then need to use a Gmail App Password.
 
@@ -129,8 +132,9 @@ Remove the screenshot block in the script or set a flag to skip it. The attachme
 
 You can execute the script directly on your machine (with `--headless` removed for debugging):
 
-    bash
-    python monitor.py
+```bash
+python monitor.py
+```
 
 Make sure you have Chrome, ChromeDriver, and the required Python packages installed:
 
