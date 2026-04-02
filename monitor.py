@@ -4,9 +4,11 @@ import smtplib
 import ssl
 import unittest
 import time
+import tempfile
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -25,14 +27,26 @@ if not all([ZOHO_EMAIL, ZOHO_PASSWORD, RECIPIENT_EMAIL]):
 SMTP_SERVERS = ["smtp.zoho.com", "smtp.zoho.eu"]
 SMTP_PORT = 587
 
-# ================= EMAIL HELPER =================
-def send_email_notification(subject, body):
+# ================= EMAIL HELPER (with image attachment) =================
+def send_email_notification(subject, body, image_path=None):
+    """
+    Send an email via Zoho SMTP, optionally attaching an image.
+    """
     print(f"Attempting to send email to {RECIPIENT_EMAIL}...")
     msg = MIMEMultipart()
     msg['From'] = ZOHO_EMAIL
     msg['To'] = RECIPIENT_EMAIL
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
+
+    if image_path and os.path.exists(image_path):
+        try:
+            with open(image_path, 'rb') as f:
+                img = MIMEImage(f.read(), name=os.path.basename(image_path))
+                msg.attach(img)
+            print("Screenshot attached")
+        except Exception as e:
+            print(f"Could not attach screenshot: {e}")
 
     for server in SMTP_SERVERS:
         try:
@@ -87,14 +101,12 @@ class RipoAddToCart(unittest.TestCase):
         try:
             element.click()
         except StaleElementReferenceException:
-            # If element becomes stale, try to find it again (this shouldn't happen with fresh finds)
             raise
         except:
             driver.execute_script("arguments[0].click();", element)
 
     def _get_windows_menu_link(self, driver, wait):
         """Return a fresh WebElement for the first non‑Home menu link."""
-        # Wait for navigation menu
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".main-navigation, .site-header, nav, .menu-primary-container")))
         menu_selectors = [
             ".main-navigation ul > li > a",
@@ -110,7 +122,6 @@ class RipoAddToCart(unittest.TestCase):
                 print(f"Found menu links using selector: {selector}")
                 break
         if not menu_links:
-            # Fallback: get all internal links with text length > 3
             all_links = driver.find_elements(By.TAG_NAME, "a")
             for link in all_links:
                 href = link.get_attribute("href")
@@ -120,7 +131,6 @@ class RipoAddToCart(unittest.TestCase):
                 print("Using fallback link detection")
         if not menu_links:
             raise Exception("Could not find any menu links")
-        # Skip the first if it's "Home" (case‑insensitive)
         idx = 0
         if len(menu_links) > 1 and menu_links[0].text.strip().lower() == "home":
             idx = 1
@@ -129,9 +139,6 @@ class RipoAddToCart(unittest.TestCase):
     def _get_doors_menu_link(self, driver, wait):
         """Return a fresh WebElement for the door menu link (second item, or link containing 'durv')."""
         try:
-            # First try the second menu link
-            windows_link = self._get_windows_menu_link(driver, wait)
-            # Re‑find all menu links to get the second one
             menu_selectors = [
                 ".main-navigation ul > li > a",
                 ".site-header nav ul > li > a",
@@ -148,7 +155,6 @@ class RipoAddToCart(unittest.TestCase):
                 return menu_links[1]
         except:
             pass
-        # Fallback: find a link containing "durv" (Latvian for door)
         door_link = driver.find_element(By.XPATH, "//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'durv')]")
         return door_link
 
@@ -227,8 +233,7 @@ class RipoAddToCart(unittest.TestCase):
 
         time.sleep(2)
 
-        # ---- Windows category (first product) ----
-        # Click the windows menu link
+        # ---- Windows category (second product) ----
         windows_link = self._get_windows_menu_link(driver, wait)
         print(f"Clicking windows menu link: '{windows_link.text}'")
         self._click_element(driver, windows_link)
@@ -246,8 +251,7 @@ class RipoAddToCart(unittest.TestCase):
         self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
         self._close_overlay(driver, wait)
 
-        # ---- Second product (first product) ----
-        # Go back to homepage and re‑click windows link
+        # ---- First product ----
         driver.get("https://insectnets.com/")
         time.sleep(2)
         windows_link = self._get_windows_menu_link(driver, wait)
@@ -331,7 +335,23 @@ class RipoAddToCart(unittest.TestCase):
         add_to_cart_button = wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt")))
         driver.execute_script("arguments[0].scrollIntoView();", add_to_cart_button)
         self._click_element(driver, add_to_cart_button)
-        self._click_element(driver, wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.button.wc-forward.btn.btn-color-secondary.btn-size-large"))))
+
+        # ---- Go to cart page and take screenshot ----
+        cart_link = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.button.wc-forward.btn.btn-color-secondary.btn-size-large")))
+        self._click_element(driver, cart_link)
+        # Wait for cart page to load
+        time.sleep(3)
+        print("Cart page loaded, taking screenshot...")
+        # Save screenshot to a temporary file
+        screenshot_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        screenshot_path = screenshot_file.name
+        screenshot_file.close()
+        self.driver.save_screenshot(screenshot_path)
+        print(f"Screenshot saved to {screenshot_path}")
+        # Store the path for the email (we'll attach it in the main block)
+        # We need to pass it outside the test method; use a class variable or return it.
+        # We'll set an attribute on the test instance.
+        self.screenshot_path = screenshot_path
 
     def is_element_present(self, how, what):
         try:
@@ -364,12 +384,24 @@ class RipoAddToCart(unittest.TestCase):
         self.assertEqual([], self.verificationErrors)
 
 if __name__ == "__main__":
+    # Create a test instance to capture screenshot path
+    test_instance = RipoAddToCart()
     success, errors = run_test_suite()
+    screenshot_path = getattr(test_instance, 'screenshot_path', None)
+
     if success:
         subject = f"[OK] Insectnets cart test PASSED at {datetime.now()}"
-        body = "The automated cart test completed successfully. All products were added to the cart without errors."
-        send_email_notification(subject, body)
+        body = "The automated cart test completed successfully. All products were added to the cart. Screenshot attached."
+        send_email_notification(subject, body, image_path=screenshot_path)
     else:
         subject = f"[ERROR] Insectnets cart test FAILED at {datetime.now()}"
         body = f"Error details:\n{errors}"
         send_email_notification(subject, body)
+
+    # Clean up screenshot if it exists
+    if screenshot_path and os.path.exists(screenshot_path):
+        try:
+            os.unlink(screenshot_path)
+            print("Screenshot file cleaned up")
+        except:
+            pass
