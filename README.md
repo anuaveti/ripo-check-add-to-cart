@@ -35,10 +35,9 @@ This project automatically tests the add‑to‑cart functionality of [insectnet
 
 ### 1. Clone or create the repository
 
-    ```bash
+    bash
     git clone https://github.com/your-username/ripo-check-add-to-cart.git
     cd ripo-check-add-to-cart
-    ```
 
 ## 2. Add the script and workflow
 
