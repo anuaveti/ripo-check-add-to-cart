@@ -11,7 +11,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException, NoAlertPresentException, TimeoutException
+from selenium.common.exceptions import NoSuchElementException, NoAlertPresentException, TimeoutException, StaleElementReferenceException
 from selenium.webdriver.chrome.options import Options
 
 # ================= CONFIGURATION =================
@@ -86,8 +86,71 @@ class RipoAddToCart(unittest.TestCase):
     def _click_element(self, driver, element):
         try:
             element.click()
+        except StaleElementReferenceException:
+            # If element becomes stale, try to find it again (this shouldn't happen with fresh finds)
+            raise
         except:
             driver.execute_script("arguments[0].click();", element)
+
+    def _get_windows_menu_link(self, driver, wait):
+        """Return a fresh WebElement for the first non‑Home menu link."""
+        # Wait for navigation menu
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".main-navigation, .site-header, nav, .menu-primary-container")))
+        menu_selectors = [
+            ".main-navigation ul > li > a",
+            ".site-header nav ul > li > a",
+            "nav ul > li > a",
+            ".menu-primary-container ul > li > a",
+            ".menu > li > a"
+        ]
+        menu_links = []
+        for selector in menu_selectors:
+            menu_links = driver.find_elements(By.CSS_SELECTOR, selector)
+            if menu_links:
+                print(f"Found menu links using selector: {selector}")
+                break
+        if not menu_links:
+            # Fallback: get all internal links with text length > 3
+            all_links = driver.find_elements(By.TAG_NAME, "a")
+            for link in all_links:
+                href = link.get_attribute("href")
+                if href and href.startswith("https://insectnets.com/") and len(link.text.strip()) > 3:
+                    menu_links.append(link)
+            if menu_links:
+                print("Using fallback link detection")
+        if not menu_links:
+            raise Exception("Could not find any menu links")
+        # Skip the first if it's "Home" (case‑insensitive)
+        idx = 0
+        if len(menu_links) > 1 and menu_links[0].text.strip().lower() == "home":
+            idx = 1
+        return menu_links[idx]
+
+    def _get_doors_menu_link(self, driver, wait):
+        """Return a fresh WebElement for the door menu link (second item, or link containing 'durv')."""
+        try:
+            # First try the second menu link
+            windows_link = self._get_windows_menu_link(driver, wait)
+            # Re‑find all menu links to get the second one
+            menu_selectors = [
+                ".main-navigation ul > li > a",
+                ".site-header nav ul > li > a",
+                "nav ul > li > a",
+                ".menu-primary-container ul > li > a",
+                ".menu > li > a"
+            ]
+            menu_links = []
+            for selector in menu_selectors:
+                menu_links = driver.find_elements(By.CSS_SELECTOR, selector)
+                if menu_links:
+                    break
+            if len(menu_links) > 1:
+                return menu_links[1]
+        except:
+            pass
+        # Fallback: find a link containing "durv" (Latvian for door)
+        door_link = driver.find_element(By.XPATH, "//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'durv')]")
+        return door_link
 
     def _select_first_option_in_accordion(self, driver, wait, header_selector, wait_for_option=True, timeout=1):
         try:
@@ -119,7 +182,7 @@ class RipoAddToCart(unittest.TestCase):
         driver = self.driver
         wait = WebDriverWait(driver, 90)
 
-        # Homepage
+        # Homepage and popups
         driver.get("https://insectnets.com/")
         print("Page loaded:", driver.current_url)
         time.sleep(3)
@@ -164,52 +227,15 @@ class RipoAddToCart(unittest.TestCase):
 
         time.sleep(2)
 
-        # Wait for the main navigation menu
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".main-navigation, .site-header, nav, .menu-primary-container")))
-
-        # Find all top-level menu links (direct children of the menu container)
-        # Try different possible selectors for the menu list
-        menu_selectors = [
-            ".main-navigation ul > li > a",
-            ".site-header nav ul > li > a",
-            "nav ul > li > a",
-            ".menu-primary-container ul > li > a",
-            ".menu > li > a"
-        ]
-        menu_links = []
-        for selector in menu_selectors:
-            menu_links = driver.find_elements(By.CSS_SELECTOR, selector)
-            if menu_links:
-                print(f"Found menu links using selector: {selector}")
-                break
-
-        if not menu_links:
-            # Fallback: get all links that are not external and not too short
-            all_links = driver.find_elements(By.TAG_NAME, "a")
-            for link in all_links:
-                href = link.get_attribute("href")
-                if href and href.startswith("https://insectnets.com/") and len(link.text.strip()) > 3:
-                    menu_links.append(link)
-            if menu_links:
-                print("Using fallback link detection")
-
-        if not menu_links:
-            raise Exception("Could not find any menu links")
-
-        # Click the first menu link (skip any "Home" link if present)
-        target_link = menu_links[0]
-        # If the first link text is "Home" and there is a second, use the second
-        if len(menu_links) > 1 and target_link.text.strip().lower() == "home":
-            target_link = menu_links[1]
-            print("Skipped Home link, using second menu item")
-        print(f"Clicking menu link: '{target_link.text}' -> {target_link.get_attribute('href')}")
-        self._click_element(driver, target_link)
-
-        # The rest of the test (unchanged from your working version)
+        # ---- Windows category (first product) ----
+        # Click the windows menu link
+        windows_link = self._get_windows_menu_link(driver, wait)
+        print(f"Clicking windows menu link: '{windows_link.text}'")
+        self._click_element(driver, windows_link)
         time.sleep(2)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
 
-        # ---- Second product ----
+        # Click second product (index 1)
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
         self.assertGreater(len(products), 1, "Not enough products in category")
         driver.execute_script("arguments[0].scrollIntoView();", products[1])
@@ -220,13 +246,12 @@ class RipoAddToCart(unittest.TestCase):
         self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
         self._close_overlay(driver, wait)
 
-        # ---- First product ----
-        # Go back to homepage or main menu – we need to navigate to the same category again.
-        # Instead of relying on link text, we'll go back to the homepage and click the same menu link.
+        # ---- Second product (first product) ----
+        # Go back to homepage and re‑click windows link
         driver.get("https://insectnets.com/")
         time.sleep(2)
-        # Re‑click the first menu link (same as above)
-        self._click_element(driver, target_link)
+        windows_link = self._get_windows_menu_link(driver, wait)
+        self._click_element(driver, windows_link)
         time.sleep(2)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
@@ -241,7 +266,8 @@ class RipoAddToCart(unittest.TestCase):
         # ---- Third product ----
         driver.get("https://insectnets.com/")
         time.sleep(2)
-        self._click_element(driver, target_link)
+        windows_link = self._get_windows_menu_link(driver, wait)
+        self._click_element(driver, windows_link)
         time.sleep(2)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
@@ -260,21 +286,9 @@ class RipoAddToCart(unittest.TestCase):
         # ---- Doors category ----
         driver.get("https://insectnets.com/")
         time.sleep(2)
-        # For doors, we need the second menu item (assuming first is windows, second is doors)
-        # We'll find menu links again and click the second one if it exists.
-        menu_links = []
-        for selector in menu_selectors:
-            menu_links = driver.find_elements(By.CSS_SELECTOR, selector)
-            if menu_links:
-                break
-        if len(menu_links) > 1:
-            door_link = menu_links[1]
-            print(f"Clicking door menu link: '{door_link.text}'")
-            self._click_element(driver, door_link)
-        else:
-            # Fallback: try to find a link with "durv" (door in Latvian)
-            door_link = driver.find_element(By.XPATH, "//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'durv')]")
-            self._click_element(driver, door_link)
+        doors_link = self._get_doors_menu_link(driver, wait)
+        print(f"Clicking doors menu link: '{doors_link.text}'")
+        self._click_element(driver, doors_link)
         time.sleep(2)
         wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
 
@@ -300,11 +314,8 @@ class RipoAddToCart(unittest.TestCase):
         # Fifth door product
         driver.get("https://insectnets.com/")
         time.sleep(2)
-        # Re‑click the door link again
-        if len(menu_links) > 1:
-            self._click_element(driver, door_link)
-        else:
-            self._click_element(driver, driver.find_element(By.XPATH, "//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'durv')]"))
+        doors_link = self._get_doors_menu_link(driver, wait)
+        self._click_element(driver, doors_link)
         time.sleep(2)
         wait.until(lambda d: len(d.find_elements(By.CSS_SELECTOR, ".product-grid-item, .product")) > 4)
         products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
