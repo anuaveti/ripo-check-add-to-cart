@@ -29,9 +29,6 @@ SMTP_PORT = 587
 
 # ================= EMAIL HELPER (with image attachment) =================
 def send_email_notification(subject, body, image_path=None):
-    """
-    Send an email via Zoho SMTP, optionally attaching an image.
-    """
     print(f"Attempting to send email to {RECIPIENT_EMAIL}...")
     msg = MIMEMultipart()
     msg['From'] = ZOHO_EMAIL
@@ -66,7 +63,11 @@ def send_email_notification(subject, body, image_path=None):
     return False
 
 # ================= TEST RUNNER =================
+# Global variable to store screenshot path from test
+_screenshot_path = None
+
 def run_test_suite():
+    global _screenshot_path
     suite = unittest.TestLoader().loadTestsFromTestCase(RipoAddToCart)
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
@@ -74,7 +75,10 @@ def run_test_suite():
     error_messages = []
     for err in result.errors + result.failures:
         error_messages.append(f"{err[0]}: {err[1]}")
-    return success, "\n".join(error_messages)
+    # After the test runs, the screenshot path is set in the test class attribute.
+    # We need to capture it from the test instance. Since we don't have direct access,
+    # we can use a class variable or a global. The test class sets the global.
+    return success, "\n".join(error_messages), _screenshot_path
 
 # ================= TEST CLASS =================
 class RipoAddToCart(unittest.TestCase):
@@ -106,7 +110,6 @@ class RipoAddToCart(unittest.TestCase):
             driver.execute_script("arguments[0].click();", element)
 
     def _get_windows_menu_link(self, driver, wait):
-        """Return a fresh WebElement for the first non‑Home menu link."""
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".main-navigation, .site-header, nav, .menu-primary-container")))
         menu_selectors = [
             ".main-navigation ul > li > a",
@@ -137,7 +140,6 @@ class RipoAddToCart(unittest.TestCase):
         return menu_links[idx]
 
     def _get_doors_menu_link(self, driver, wait):
-        """Return a fresh WebElement for the door menu link (second item, or link containing 'durv')."""
         try:
             menu_selectors = [
                 ".main-navigation ul > li > a",
@@ -185,6 +187,7 @@ class RipoAddToCart(unittest.TestCase):
             pass
 
     def test_ripo_add_to_cart(self):
+        global _screenshot_path
         driver = self.driver
         wait = WebDriverWait(driver, 90)
 
@@ -339,19 +342,15 @@ class RipoAddToCart(unittest.TestCase):
         # ---- Go to cart page and take screenshot ----
         cart_link = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.button.wc-forward.btn.btn-color-secondary.btn-size-large")))
         self._click_element(driver, cart_link)
-        # Wait for cart page to load
         time.sleep(3)
         print("Cart page loaded, taking screenshot...")
-        # Save screenshot to a temporary file
         screenshot_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         screenshot_path = screenshot_file.name
         screenshot_file.close()
         self.driver.save_screenshot(screenshot_path)
         print(f"Screenshot saved to {screenshot_path}")
-        # Store the path for the email (we'll attach it in the main block)
-        # We need to pass it outside the test method; use a class variable or return it.
-        # We'll set an attribute on the test instance.
-        self.screenshot_path = screenshot_path
+        # Store in global variable for later email
+        _screenshot_path = screenshot_path
 
     def is_element_present(self, how, what):
         try:
@@ -384,11 +383,7 @@ class RipoAddToCart(unittest.TestCase):
         self.assertEqual([], self.verificationErrors)
 
 if __name__ == "__main__":
-    # Create a test instance to capture screenshot path
-    test_instance = RipoAddToCart()
-    success, errors = run_test_suite()
-    screenshot_path = getattr(test_instance, 'screenshot_path', None)
-
+    success, errors, screenshot_path = run_test_suite()
     if success:
         subject = f"[OK] Insectnets cart test PASSED at {datetime.now()}"
         body = "The automated cart test completed successfully. All products were added to the cart. Screenshot attached."
