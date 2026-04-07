@@ -352,6 +352,12 @@ class RipoAddToCart(unittest.TestCase):
         # Store in global variable for later email
         _screenshot_path = screenshot_path
 
+    # After taking screenshot, count cart items
+    cart_items = driver.find_elements(By.CSS_SELECTOR, ".cart_item")
+    if len(cart_items) < 5:
+        raise AssertionError(f"Cart contains only {len(cart_items)} items, expected 5.")
+    
+
     def is_element_present(self, how, what):
         try:
             self.driver.find_element(by=how, value=what)
@@ -386,7 +392,7 @@ if __name__ == "__main__":
     success, errors, screenshot_path = run_test_suite()
     if success:
         subject = f"[OK] Insectnets cart test PASSED at {datetime.now()}"
-        body = "The automated cart test completed successfully. All products were added to the cart. Screenshot attached."
+        body = "The automated cart test completed successfully. All products were added to the cart. Screenshot attached. Cart contains {len(cart_items)} items."
         send_email_notification(subject, body, image_path=screenshot_path)
     else:
         subject = f"[ERROR] Insectnets cart test FAILED at {datetime.now()}"
