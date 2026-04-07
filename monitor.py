@@ -394,12 +394,12 @@ if __name__ == "__main__":
     success, errors, screenshot_path = run_test_suite()
     if success:
         subject = f"[OK] Insectnets cart test PASSED at {datetime.now()}"
-        body = "The automated cart test completed successfully. All products were added to the cart. Screenshot attached. Cart contains {actual_count} items."
+        body = "The automated cart test completed successfully. All products were added to the cart. Screenshot attached."
         send_email_notification(subject, body, image_path=screenshot_path)
     else:
         subject = f"[ERROR] Insectnets cart test FAILED at {datetime.now()}"
         body = f"Error details:\n{errors}"
-        send_email_notification(subject, body)
+        send_email_notification(subject, body, image_path=screenshot_path)
 
     # Clean up screenshot if it exists
     if screenshot_path and os.path.exists(screenshot_path):
