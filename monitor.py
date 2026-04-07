@@ -352,10 +352,10 @@ class RipoAddToCart(unittest.TestCase):
         # Store in global variable for later email
         _screenshot_path = screenshot_path
 
-    # After taking screenshot, count cart items
-    cart_items = driver.find_elements(By.CSS_SELECTOR, ".cart_item")
-    if len(cart_items) < 5:
-        raise AssertionError(f"Cart contains only {len(cart_items)} items, expected 5.")
+        # After taking screenshot, count cart items
+        cart_items = driver.find_elements(By.CSS_SELECTOR, ".cart_item")
+        if len(cart_items) < 5:
+            raise AssertionError(f"Cart contains only {len(cart_items)} items, expected 5.")
     
 
     def is_element_present(self, how, what):
