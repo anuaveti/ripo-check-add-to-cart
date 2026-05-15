@@ -15,6 +15,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, NoAlertPresentException, TimeoutException, StaleElementReferenceException
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 
 # ================= CONFIGURATION =================
 ZOHO_EMAIL = os.environ.get("ZOHO_EMAIL")
@@ -27,7 +29,7 @@ if not all([ZOHO_EMAIL, ZOHO_PASSWORD, RECIPIENT_EMAIL]):
 SMTP_SERVERS = ["smtp.zoho.com", "smtp.zoho.eu"]
 SMTP_PORT = 587
 
-# ================= EMAIL HELPER (with image attachment) =================
+# ================= EMAIL HELPER =================
 def send_email_notification(subject, body, image_path=None):
     print(f"Attempting to send email to {RECIPIENT_EMAIL}...")
     msg = MIMEMultipart()
@@ -44,6 +46,8 @@ def send_email_notification(subject, body, image_path=None):
             print("Screenshot attached")
         except Exception as e:
             print(f"Could not attach screenshot: {e}")
+    else:
+        print("No screenshot to attach")
 
     for server in SMTP_SERVERS:
         try:
@@ -63,7 +67,6 @@ def send_email_notification(subject, body, image_path=None):
     return False
 
 # ================= TEST RUNNER =================
-# Global variable to store screenshot path from test
 _screenshot_path = None
 
 def run_test_suite():
@@ -75,9 +78,6 @@ def run_test_suite():
     error_messages = []
     for err in result.errors + result.failures:
         error_messages.append(f"{err[0]}: {err[1]}")
-    # After the test runs, the screenshot path is set in the test class attribute.
-    # We need to capture it from the test instance. Since we don't have direct access,
-    # we can use a class variable or a global. The test class sets the global.
     return success, "\n".join(error_messages), _screenshot_path
 
 # ================= TEST CLASS =================
@@ -96,7 +96,7 @@ class RipoAddToCart(unittest.TestCase):
             "user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         self.driver = webdriver.Chrome(options=chrome_options)
-        self.driver.implicitly_wait(30)
+        self.driver.implicitly_wait(10)
         self.base_url = "https://www.blazedemo.com/"
         self.verificationErrors = []
         self.accept_next_alert = True
@@ -108,6 +108,56 @@ class RipoAddToCart(unittest.TestCase):
             raise
         except:
             driver.execute_script("arguments[0].click();", element)
+
+    def _close_any_popup(self, driver, wait):
+        """Aggressively close any popup/modal."""
+        close_selectors = [
+            (By.CSS_SELECTOR, ".popup-close, .close-popup, .modal-close, .close"),
+            (By.CSS_SELECTOR, "button[aria-label='Close']"),
+            (By.CSS_SELECTOR, "button.close"),
+            (By.XPATH, "//button[contains(text(), 'Close')]"),
+            (By.XPATH, "//button[contains(text(), '×')]"),
+            (By.XPATH, "//span[contains(text(), '×')]"),
+            (By.CSS_SELECTOR, ".newsletter-popup .close"),
+            (By.CSS_SELECTOR, ".popup .close"),
+            (By.CSS_SELECTOR, "div[role='dialog'] button"),
+        ]
+        dismiss_selectors = [
+            (By.XPATH, "//button[contains(text(), 'No thanks')]"),
+            (By.XPATH, "//button[contains(text(), 'Dismiss')]"),
+            (By.XPATH, "//button[contains(text(), 'Decline')]"),
+            (By.XPATH, "//button[contains(text(), 'Not now')]"),
+            (By.XPATH, "//button[contains(text(), 'Maybe later')]"),
+        ]
+        continue_selectors = [
+            (By.XPATH, "//button[contains(text(), 'Continue')]"),
+            (By.XPATH, "//button[contains(text(), 'Continue shopping')]"),
+            (By.XPATH, "//a[contains(text(), 'Continue')]"),
+            (By.XPATH, "//a[contains(text(), 'Continue shopping')]"),
+            (By.XPATH, "//button[contains(text(), 'Back to site')]"),
+            (By.XPATH, "//button[contains(text(), 'Stay here')]"),
+            (By.XPATH, "//a[contains(text(), 'Back to site')]"),
+            (By.XPATH, "//button[contains(text(), 'OK')]"),
+        ]
+        for by, selector in close_selectors + dismiss_selectors + continue_selectors:
+            try:
+                elem = driver.find_element(by, selector)
+                if elem.is_displayed() and elem.is_enabled():
+                    self._click_element(driver, elem)
+                    print(f"Closed popup using: {selector}")
+                    time.sleep(0.2)
+                    return True
+            except:
+                continue
+        # Press Escape
+        try:
+            ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+            print("Sent Escape key to close popup")
+            time.sleep(0.2)
+            return True
+        except:
+            pass
+        return False
 
     def _get_windows_menu_link(self, driver, wait):
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".main-navigation, .site-header, nav, .menu-primary-container")))
@@ -177,6 +227,82 @@ class RipoAddToCart(unittest.TestCase):
         except Exception:
             pass
 
+    def _add_product_to_cart(self, driver, wait, product_name=""):
+        """
+        Perform the add-to-cart process on the current product page.
+        Returns True if successfully added, False otherwise.
+        """
+        try:
+            # Wait for the add-to-cart button to be present
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt")))
+            # Expand necessary accordions (only those that exist – the script will click if present)
+            # For windows products (net-type and frame-color)
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
+            except:
+                pass
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", wait_for_option=False)
+            except:
+                pass
+            # Additional accordions for some products
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_mounting-type-window-header > span.attr-accordion__title", wait_for_option=False)
+            except:
+                pass
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-dimensions-header > span.attr-accordion__title", wait_for_option=False)
+            except:
+                pass
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_dimension-type-header", wait_for_option=False)
+            except:
+                pass
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header", wait_for_option=False)
+            except:
+                pass
+            # Door-specific accordions
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_obstractions-header > span.attr-accordion__title", wait_for_option=False)
+            except:
+                pass
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_mounting-type-door-header", wait_for_option=False)
+            except:
+                pass
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_opening-direction-header > span.attr-accordion__title", wait_for_option=False)
+            except:
+                pass
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_petscreen-in-lower-part-header > span.attr-accordion__title", wait_for_option=False)
+            except:
+                pass
+            try:
+                self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_installation-type-header > span.attr-accordion__title", wait_for_option=False)
+            except:
+                pass
+
+            # Click add to cart button
+            add_button = driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt")
+            driver.execute_script("arguments[0].scrollIntoView();", add_button)
+            add_button.click()
+            print(f"Added product: {product_name}")
+            # Wait for success message or overlay
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, ".woocommerce-message, .added-to-cart, .cart-popup, div.overlay.open"))
+                )
+            except:
+                pass
+            # Close any overlay that appears
+            self._close_overlay(driver, wait)
+            return True
+        except Exception as e:
+            print(f"Error adding product {product_name}: {e}")
+            return False
+
     def _close_overlay(self, driver, wait):
         try:
             overlay = WebDriverWait(driver, 2).until(
@@ -191,12 +317,21 @@ class RipoAddToCart(unittest.TestCase):
         driver = self.driver
         wait = WebDriverWait(driver, 90)
 
-        # Homepage and popups
-        driver.get("https://insectnets.com/")
-        print("Page loaded:", driver.current_url)
-        time.sleep(3)
+        # ---- Homepage loading with retry ----
+        for attempt in range(3):
+            try:
+                driver.get("https://insectnets.com/")
+                print("Page loaded:", driver.current_url)
+                break
+            except Exception as e:
+                print(f"Attempt {attempt+1} failed to load homepage: {e}")
+                if attempt == 2:
+                    raise
+                time.sleep(5)
+        time.sleep(2)
+        self._close_any_popup(driver, wait)
 
-        # Geoip popup
+        # ---- Geoip popup ----
         geoip_clicked = False
         for by, selector in [
             (By.ID, "geoip-popup-switch-yes"),
@@ -215,7 +350,7 @@ class RipoAddToCart(unittest.TestCase):
         if not geoip_clicked:
             print("Geoip popup not found – continuing")
 
-        # Cookie consent popup
+        # ---- Cookie consent ----
         cookie_clicked = False
         for by, selector in [
             (By.CSS_SELECTOR, "[data-cky-tag=\"reject-button\"]"),
@@ -234,131 +369,134 @@ class RipoAddToCart(unittest.TestCase):
         if not cookie_clicked:
             print("Cookie popup not found – continuing")
 
-        time.sleep(2)
+        time.sleep(0.5)
 
-        # ---- Windows category (second product) ----
-        windows_link = self._get_windows_menu_link(driver, wait)
-        print(f"Clicking windows menu link: '{windows_link.text}'")
-        self._click_element(driver, windows_link)
-        time.sleep(2)
-        wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
+        # ---- Helper to navigate to windows category ----
+        def go_to_windows_category():
+            windows_link = self._get_windows_menu_link(driver, wait)
+            print(f"Clicking windows menu link: '{windows_link.text}'")
+            self._click_element(driver, windows_link)
+            time.sleep(0.5)
+            self._close_any_popup(driver, wait)
+            wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
 
-        # Click second product (index 1)
-        products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
-        self.assertGreater(len(products), 1, "Not enough products in category")
-        driver.execute_script("arguments[0].scrollIntoView();", products[1])
-        self._click_element(driver, products[1])
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", wait_for_option=False)
-        self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
-        self._close_overlay(driver, wait)
+        # ---- Helper to get product link and click ----
+        def click_product(index, product_name):
+            products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
+            if len(products) <= index:
+                raise Exception(f"Not enough products to click index {index} for {product_name}")
+            product = products[index]
+            driver.execute_script("arguments[0].scrollIntoView();", product)
+            self._click_element(driver, product)
+            time.sleep(0.5)
+            self._close_any_popup(driver, wait)
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
 
-        # ---- First product ----
-        driver.get("https://insectnets.com/")
-        time.sleep(2)
-        windows_link = self._get_windows_menu_link(driver, wait)
-        self._click_element(driver, windows_link)
-        time.sleep(2)
-        wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
-        products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
-        driver.execute_script("arguments[0].scrollIntoView();", products[0])
-        self._click_element(driver, products[0])
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", wait_for_option=False)
-        self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
-        self._close_overlay(driver, wait)
-
-        # ---- Third product ----
-        driver.get("https://insectnets.com/")
-        time.sleep(2)
-        windows_link = self._get_windows_menu_link(driver, wait)
-        self._click_element(driver, windows_link)
-        time.sleep(2)
-        wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
-        products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
-        self.assertGreater(len(products), 2, "Not enough products for third click")
-        driver.execute_script("arguments[0].scrollIntoView();", products[2])
-        self._click_element(driver, products[2])
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_mounting-type-window-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-dimensions-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_dimension-type-header", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header", wait_for_option=False)
-        self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
-        self._close_overlay(driver, wait)
+        # ---- Add products with retries ----
+        product_list = [
+            (1, "second product"),
+            (0, "first product"),
+            (2, "third product")
+        ]
+        for idx, name in product_list:
+            go_to_windows_category()
+            click_product(idx, name)
+            added = False
+            for retry in range(2):
+                if self._add_product_to_cart(driver, wait, name):
+                    added = True
+                    break
+                else:
+                    print(f"Retry adding {name} (attempt {retry+2})")
+                    # Refresh product page and try again
+                    driver.refresh()
+                    time.sleep(1)
+                    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
+            if not added:
+                raise Exception(f"Failed to add {name} after 2 attempts")
 
         # ---- Doors category ----
-        driver.get("https://insectnets.com/")
-        time.sleep(2)
-        doors_link = self._get_doors_menu_link(driver, wait)
-        print(f"Clicking doors menu link: '{doors_link.text}'")
-        self._click_element(driver, doors_link)
-        time.sleep(2)
-        wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
+        def go_to_doors_category():
+            doors_link = self._get_doors_menu_link(driver, wait)
+            print(f"Clicking doors menu link: '{doors_link.text}'")
+            self._click_element(driver, doors_link)
+            time.sleep(0.5)
+            self._close_any_popup(driver, wait)
+            wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".product-grid, .products, .product-grid-item"))
 
-        # First door product
-        products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
-        self.assertGreater(len(products), 0, "No door products found")
-        show_products = driver.find_elements(By.CSS_SELECTOR, ".product-grid-item.show .product-grid-item__image-hover picture img")
-        door_product = show_products[0] if show_products else products[0]
-        driver.execute_script("arguments[0].scrollIntoView();", door_product)
-        self._click_element(driver, door_product)
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_obstractions-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_mounting-type-door-header", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-dimensions-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_opening-direction-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_dimension-type-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_net-type-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_petscreen-in-lower-part-header > span.attr-accordion__title", wait_for_option=False)
-        self._select_first_option_in_accordion(driver, wait, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", wait_for_option=False)
-        self._click_element(driver, driver.find_element(By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt"))
-        self._close_overlay(driver, wait)
+        door_products = [
+            (0, "first door product"),
+            (4, "fifth door product")
+        ]
+        for idx, name in door_products:
+            go_to_doors_category()
+            click_product(idx, name)
+            added = False
+            for retry in range(2):
+                if self._add_product_to_cart(driver, wait, name):
+                    added = True
+                    break
+                else:
+                    print(f"Retry adding {name} (attempt {retry+2})")
+                    driver.refresh()
+                    time.sleep(1)
+                    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
+            if not added:
+                raise Exception(f"Failed to add {name} after 2 attempts")
 
-        # Fifth door product
-        driver.get("https://insectnets.com/")
-        time.sleep(2)
-        doors_link = self._get_doors_menu_link(driver, wait)
-        self._click_element(driver, doors_link)
-        time.sleep(2)
-        wait.until(lambda d: len(d.find_elements(By.CSS_SELECTOR, ".product-grid-item, .product")) > 4)
-        products = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".product-grid-item, .product")))
-        self.assertGreater(len(products), 4, "Not enough door products")
-        fifth_product = products[4]
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", fifth_product)
-        time.sleep(1)
-        self._click_element(driver, fifth_product)
-        wait_long = WebDriverWait(driver, 40)
-        wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button")))
-        self._select_first_option_in_accordion(driver, wait_long, "#attr-acc-pa_installation-type-header > span.attr-accordion__title", timeout=0.5)
-        self._select_first_option_in_accordion(driver, wait_long, "#attr-acc-pa_frame-color-header > span.attr-accordion__title", timeout=0.5)
-        add_to_cart_button = wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.single_add_to_cart_button.button.alt")))
-        driver.execute_script("arguments[0].scrollIntoView();", add_to_cart_button)
-        self._click_element(driver, add_to_cart_button)
+        # ---- Go to cart page with robust handling ----
+        cart_clicked = False
+        for attempt in range(5):
+            try:
+                # Re-find element each time
+                cart_link = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.button.wc-forward.btn.btn-color-secondary.btn-size-large")))
+                driver.execute_script("arguments[0].click();", cart_link)
+                cart_clicked = True
+                print("Cart link clicked")
+                break
+            except (StaleElementReferenceException, TimeoutException) as e:
+                print(f"Cart link attempt {attempt+1} failed: {e}")
+                if attempt == 4:
+                    # Fallback to XPath
+                    try:
+                        cart_link = wait.until(EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'View cart') or contains(text(), 'Cart')]")))
+                        driver.execute_script("arguments[0].click();", cart_link)
+                        cart_clicked = True
+                        print("Cart link clicked using fallback XPath")
+                        break
+                    except Exception as final_err:
+                        raise final_err
+                time.sleep(1)
+        if not cart_clicked:
+            raise Exception("Could not click the cart link")
 
-        # ---- Go to cart page and take screenshot ----
-        cart_link = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.button.wc-forward.btn.btn-color-secondary.btn-size-large")))
-        self._click_element(driver, cart_link)
-        time.sleep(3)
-        print("Cart page loaded, taking screenshot...")
+        # Wait for cart page to load
+        wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, ".cart_item, .cart-table, .woocommerce-cart-form"))
+        time.sleep(2)
+        print("Cart page loaded")
+
+        # ---- Take screenshot ----
         screenshot_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         screenshot_path = screenshot_file.name
         screenshot_file.close()
         self.driver.save_screenshot(screenshot_path)
         print(f"Screenshot saved to {screenshot_path}")
-        # Store in global variable for later email
         _screenshot_path = screenshot_path
 
-        # After taking screenshot, count cart items(expected 5: 3 windows + 2 doors)
+        # ---- Verify cart item count ----
         cart_items = driver.find_elements(By.CSS_SELECTOR, ".cart_item")
         actual_count = len(cart_items)
         print(f"Cart contains {actual_count} items.")
         if actual_count < 5:
-            raise AssertionError(f"Cart contains only {actual_count} items, expected 5. The cart may have missing products.")
-    
+            # Double-check by reloading the cart page once
+            driver.refresh()
+            time.sleep(2)
+            cart_items = driver.find_elements(By.CSS_SELECTOR, ".cart_item")
+            actual_count = len(cart_items)
+            print(f"After refresh, cart contains {actual_count} items.")
+            if actual_count < 5:
+                raise AssertionError(f"Cart contains only {actual_count} items, expected 5. The cart may have missing products.")
+        print("Cart item count verification passed.")
 
     def is_element_present(self, how, what):
         try:
@@ -401,7 +539,6 @@ if __name__ == "__main__":
         body = f"Error details:\n{errors}"
         send_email_notification(subject, body, image_path=screenshot_path)
 
-    # Clean up screenshot if it exists
     if screenshot_path and os.path.exists(screenshot_path):
         try:
             os.unlink(screenshot_path)
